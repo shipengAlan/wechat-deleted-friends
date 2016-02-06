@@ -24,6 +24,9 @@ import math
 import subprocess
 import ssl
 import thread
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 DEBUG = False
 
@@ -450,12 +453,108 @@ def webwxsync():
     return state
 
 
+def sendMsg(UserNames, Content, MyName):
+    import urllib, urllib2
+    import cookielib
+    url = base_uri + '/webwxsendmsg?lang=zh_CN&pass_ticket=%s' % (pass_ticket)
+    #{"BaseRequest":{"Uin":2640575729,"Sid":"D8+cLh9QyxlkR4V7","Skey":"@crypt_6851ae89_fe0d308872da61d42b2f0274c9cd962a","DeviceID":"e285365915059683"},"Msg":{"Type":1,"Content":"test","FromUserName":"@e3626f371d48614ce6af18cf8089f9c50f11764c9dbd6f633a50e8fc7c0c6e17","ToUserName":"@86bd7566651076f168c026ff3402220955d6d9ef6c3fb9a943a757866882467c","LocalID":"14520777376430312","ClientMsgId":"14520777376430312"}}
+    # "Msg":{"Type":1,,"FromUserName":"@e3626f371d48614ce6af18cf8089f9c50f11764c9dbd6f633a50e8fc7c0c6e17","ToUserName":"@86bd7566651076f168c026ff3402220955d6d9ef6c3fb9a943a757866882467c","LocalID":"14520777376430312","ClientMsgId":"14520777376430312"}}
+    LocalID = str(int(time.time())) + '0000000'
+    ClientMsgId = LocalID
+    Msg = {
+        "Type": 1,
+        "Content": Content,
+        "FromUserName": MyName,
+        "ToUserName": UserNames,
+        "LocalID": LocalID,
+        "ClientMsgId": ClientMsgId,
+    }
+    params = {
+        'BaseRequest': BaseRequest,
+        'Msg': Msg,
+    }
+    request = urllib2.Request(url=url, data=json.dumps(params, ensure_ascii=False).encode('utf-8'))
+    request.add_header('ContentType', 'application/json;charset=utf-8')
+    response = urllib2.urlopen(request)
+    data = response.read()
+    json_data = json.loads(data)
+    if json_data['MsgID']:
+        print('OK!'+Content)
+    else:
+        print('Err!'+Content)
+    return
+
+
 def heartBeatLoop():
     while True:
         selector = syncCheck()
         if selector != '0':
             webwxsync()
         time.sleep(1)
+
+def MsgMain():
+    import urllib, urllib2
+    import cookielib
+    """
+    proxy_info = {'host': '127.0.0.1', 'port': 8888}
+    # We create a handler for the proxy
+    #proxy_support = urllib2.ProxyHandler({"http": "http://%(host)s:%(port)d" % proxy_info})
+    # We create an opener which uses this handler:
+    opener = urllib2.build_opener(proxy_support)
+    urllib2.install_opener(opener)
+    """
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookielib.CookieJar()))
+    urllib2.install_opener(opener)
+    if not getUUID():
+        print('获取uuid失败')
+        return
+
+    showQRImage()
+    time.sleep(1)
+
+    while waitForLogin() != '200':
+        pass
+
+    os.remove(QRImagePath)
+
+    if not login():
+        print('登录失败')
+        return
+
+    if not webwxinit():
+        print('初始化失败')
+        return
+    # MemberList 是 联系人列表
+    MemberList = webwxgetcontact()
+    #
+    MemberCount = len(MemberList)
+    print('通讯录共%s位好友' % MemberCount)
+    f = open('friendList.txt', 'w')
+    friendDict = {}
+    for item in MemberList:
+        line = ''
+        if item['RemarkName']:
+            line = '备注名:'+item['RemarkName']+',昵称:'+item['NickName'].encode('utf-8')+',发送名:'+item['RemarkName']+'\n'
+        else:
+            line = '备注名:'+item['RemarkName']+',昵称:'+item['NickName'].encode('utf-8')+',发送名:'+item['NickName'].encode('utf-8')+'\n'
+        f.write(line)
+        friendDict[item['NickName'].encode('utf-8')] = item['UserName']
+    f.close()
+    print('请修改当前目录下的friendList.txt文件，修改发送名。如不发送，可将该行删除，修改完毕请回车确认！')
+    raw_input()
+    print('请仔细检查发送名是否正确，避免误会！回车确认')
+    raw_input()
+    f = open('friendList.txt', 'r')
+    while 1:
+        line = f.readline()
+        if not line:
+            break
+        sendName = line.strip('\n').split(',')[-1].split(":")[-1]
+        nickName = line.strip('\n').split(',')[-2].split(":")[-1]
+        #out.write('send'+ sendName+','+nickName+','+friendDict[nickName]+'\n')
+        sendMsg(friendDict[nickName], sendName+",新年好".encode('utf-8'), My['UserName'])  #u'新年快乐，'+str(item['RemarkName'])
+    f.close()
+
 
 
 def main():
@@ -589,6 +688,11 @@ if sys.stdout.encoding == 'cp936':
 
 if __name__ == '__main__':
 
-    print('本程序的查询结果可能会引起一些心理上的不适,请小心使用...')
-    main()
-    print('回车键退出...')
+    #print('本程序的查询结果可能会引起一些心理上的不适,请小心使用...')
+    print('本程序会选择性群发拜年微信消息，并附上对方的称呼，请小心使用')
+    print('回车键继续...')
+    raw_input()
+    MsgMain()
+    print('回车键结束')
+    raw_input()
+    #print('回车键退出...')
